@@ -1,243 +1,135 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>BGL Products</title>
-
-  <style>
-    body { font-family: Arial; margin:0; background:#f5f5f5;}
-
-    .header {
-      background:black;
-      color:white;
-      padding:10px;
-      text-align:center;
-    }
-
-    .search {
-      padding:10px;
-      text-align:center;
-    }
-
-    input {
-      padding:10px;
-      width:60%;
-      border-radius:10px;
-      border:1px solid #ccc;
-    }
-
-    button {
-      padding:10px;
-      border:none;
-      background:black;
-      color:white;
-      border-radius:10px;
-    }
-
-    .section-title {
-      padding:10px;
-      font-weight:bold;
-    }
-
-    .grid {
-      display:grid;
-      grid-template-columns:repeat(2,1fr);
-      gap:10px;
-      padding:10px;
-    }
-
-    .box {
-      height:180px;
-      background:#ddd;
-      border-radius:10px;
-      overflow:hidden;
-      position:relative;
-    }
-
-    img {
-      width:100%;
-      height:100%;
-      object-fit:cover;
-    }
-
-    .number {
-      position:absolute;
-      top:5px;
-      left:5px;
-      background:black;
-      color:white;
-      padding:3px 8px;
-      border-radius:5px;
-      font-size:12px;
-    }
-
-    .admin-btn {
-      position:fixed;
-      bottom:20px;
-      right:20px;
-      background:black;
-      color:white;
-      padding:15px;
-      border-radius:50%;
-      font-size:20px;
-    }
-
-    .dashboard {
-      background:white;
-      margin:10px;
-      padding:10px;
-      border-radius:10px;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BGL Products</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background:#f5f5f5;}
+  .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;}
+  .search-bar input { padding:5px; width:200px; }
+  .grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:20px;}
+  .box { background:white; padding:10px; border-radius:8px; box-shadow:0 2px 5px rgba(0,0,0,0.2); position:relative;}
+  .box img { width:100%; border-radius:5px; cursor:pointer;}
+  .product-no { position:absolute; top:5px; left:5px; background:rgba(0,0,0,0.6); color:white; padding:2px 5px; border-radius:3px; font-size:12px;}
+  .admin-btn { margin-bottom:20px; }
+</style>
 </head>
-
 <body>
 
-<div class="header">BGL Products</div>
-
-<div class="search">
-  <input type="number" id="searchBox" placeholder="Enter Product No.">
-  <button onclick="goToProduct()">Go</button>
+<div class="header">
+  <div class="admin-btn">
+    <button onclick="adminLogin()">Add Product</button>
+  </div>
+  <div class="search-bar">
+    <input type="number" id="searchInput" placeholder="Search Product No." oninput="searchProduct()">
+  </div>
 </div>
 
-<div class="dashboard" id="dashboard"></div>
+<h3>Trending Products</h3>
+<div id="trending" class="grid"></div>
 
-<div id="content"></div>
+<h3>Top 3 Products</h3>
+<div id="top3" class="grid"></div>
 
-<button class="admin-btn" onclick="adminLogin()">+</button>
+<h3>Recently Added Products</h3>
+<div id="recent" class="grid"></div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, getDocs, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
-
+<script>
+// 🔹 Firebase Config – Replace with your own
 const firebaseConfig = {
-  apiKey: "YOUR_KEY",
-  authDomain: "YOUR_DOMAIN",
-  projectId: "YOUR_ID",
-  storageBucket: "YOUR_BUCKET"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const storage = getStorage(app);
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
 
-let isAdmin = false;
+// 🔹 Admin Password
+const ADMIN_PASS = "baghel9368075162";
 
-window.adminLogin = function() {
-  let pass = prompt("Enter Password");
-  if(pass === "baghel123") {
-    isAdmin = true;
-    alert("Admin Mode ON");
-  } else alert("Wrong Password");
-};
-
-const content = document.getElementById("content");
-const dashboard = document.getElementById("dashboard");
-
-let globalProducts = [];
-
-async function loadData() {
-  const querySnapshot = await getDocs(collection(db, "products"));
-  globalProducts = [];
-
-  querySnapshot.forEach(docSnap => {
-    globalProducts.push({ id: docSnap.id, ...docSnap.data() });
+// 🔹 Render Products
+function renderProducts(containerId, products) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  products.forEach(p => {
+    const box = document.createElement('div');
+    box.className = 'box';
+    box.innerHTML = `
+      <div class="product-no">${p.no}</div>
+      <img src="${p.img}" onclick="window.open('${p.link}', '_blank')">
+    `;
+    container.appendChild(box);
   });
-
-  let trending = [...globalProducts].sort((a,b)=> (b.clicks||0)-(a.clicks||0));
-  let recent = [...globalProducts].sort((a,b)=> (b.time||0)-(a.time||0));
-  let top3 = trending.slice(0,3);
-
-  content.innerHTML = "";
-
-  createSection("🏆 Top 3 Products", top3);
-  createSection("🔥 Trending Products", trending);
-  createSection("🆕 Recently Added", recent);
-
-  let totalClicks = globalProducts.reduce((s,p)=>s+(p.clicks||0),0);
-
-  dashboard.innerHTML = `
-    Total Products: ${globalProducts.length} <br>
-    Total Clicks: ${totalClicks}
-  `;
 }
 
-function createSection(title, list) {
-  let titleDiv = document.createElement("div");
-  titleDiv.className = "section-title";
-  titleDiv.innerText = title;
-  content.appendChild(titleDiv);
-
-  let grid = document.createElement("div");
-  grid.className = "grid";
-
-  list.forEach((data, index) => {
-    let box = document.createElement("div");
-    box.className = "box";
-
-    let number = document.createElement("div");
-    number.className = "number";
-    number.innerText = "#" + (index+1);
-
-    let img = document.createElement("img");
-    img.src = data.img;
-
-    box.appendChild(img);
-    box.appendChild(number);
-
-    box.onclick = async () => {
-      window.open(data.link);
-      await updateDoc(doc(db, "products", data.id), {
-        clicks: (data.clicks||0)+1
-      });
-    };
-
-    grid.appendChild(box);
-  });
-
-  content.appendChild(grid);
+// 🔹 Load Products from Firestore
+async function loadProducts() {
+  const snapshot = await db.collection('products').get();
+  const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  // Trending: Sort by clicks
+  const trending = [...all].sort((a,b)=>b.clicks-a.clicks).slice(0,6);
+  renderProducts('trending', trending);
+  
+  // Top 3
+  const top3 = [...all].sort((a,b)=>b.clicks-a.clicks).slice(0,3);
+  renderProducts('top3', top3);
+  
+  // Recent
+  const recent = [...all].sort((a,b)=>b.time-a.time).slice(0,6);
+  renderProducts('recent', recent);
+  
+  window.allProducts = all; // store for search
 }
 
-window.goToProduct = function() {
-  let val = document.getElementById("searchBox").value;
-  if(!val) return loadData();
+// 🔹 Search by Product No
+function searchProduct() {
+  const val = Number(document.getElementById('searchInput').value);
+  if(!val) return loadProducts();
+  const result = window.allProducts.filter(p => p.no === val);
+  renderProducts('trending', result);
+  renderProducts('top3', result);
+  renderProducts('recent', result);
+}
 
-  content.innerHTML = "";
-
-  let product = globalProducts[val-1];
-  if(!product) return alert("Product not found");
-
-  createSection("🔍 Search Result", [product]);
-};
-
-window.addEventListener("dblclick", async () => {
-  if(!isAdmin) return alert("Login first");
-
-  let file = document.createElement("input");
-  file.type = "file";
-  file.click();
-
-  file.onchange = async () => {
-    let f = file.files[0];
-    let storageRef = ref(storage, "images/"+f.name);
-
-    await uploadBytes(storageRef, f);
-    let url = await getDownloadURL(storageRef);
-
-    let link = prompt("Enter Affiliate Link");
-
-    await addDoc(collection(db, "products"), {
+// 🔹 Admin Login + Add Product
+function adminLogin() {
+  const pass = prompt("Enter Admin Password");
+  if(pass !== ADMIN_PASS){ alert("Wrong Password"); return; }
+  const no = Number(prompt("Enter Product No."));
+  const link = prompt("Enter Affiliate Link (https://...)");
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = 'image/*';
+  fileInput.onchange = async e=>{
+    const file = e.target.files[0];
+    const storageRef = storage.ref('products/'+Date.now()+'_'+file.name);
+    await storageRef.put(file);
+    const url = await storageRef.getDownloadURL();
+    await db.collection('products').add({
+      no,
+      link,
       img: url,
-      link: link,
       clicks: 0,
       time: Date.now()
     });
-
-    loadData();
+    alert("Product Added!");
+    loadProducts();
   };
-});
+  fileInput.click();
+}
 
-loadData();
+// 🔹 Initialize
+loadProducts();
 </script>
 
 </body>
